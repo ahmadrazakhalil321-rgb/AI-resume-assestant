@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 from google import genai
 from google.genai import types
@@ -41,7 +42,7 @@ def get_resume_text(uploaded_file):
     else:
         raise ValueError("Unsupported file format.")
 
-# Call Gemini Flash Model
+# Call Gemini Flash Model with Automatic Retry for 503 Errors
 def evaluate_resume(resume_text, job_description="", api_key=""):
     client = genai.Client(api_key=api_key)
     
@@ -73,14 +74,28 @@ def evaluate_resume(resume_text, job_description="", api_key=""):
        - List key hard and soft skills that should be added.
     """
     
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-        )
-    )
-    return response.text
+    max_retries = 3
+    backoff_factor = 2
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                )
+            )
+            return response.text
+        except Exception as e:
+            error_str = str(e)
+            # If it's a 503 / temporary overload error and we haven't maxed out retries
+            if ("503" in error_str or "UNAVAILABLE" in error_str) and attempt < max_retries - 1:
+                sleep_time = backoff_factor ** (attempt + 1) # 2s, 4s...
+                time.sleep(sleep_time)
+                continue
+            else:
+                raise e
 
 # --- UI Header ---
 st.title("📄 ATS Resume Analyzer & Score Booster")
@@ -111,7 +126,7 @@ if st.button("Evaluate Resume", type="primary"):
     elif not uploaded_file:
         st.warning("Please upload a resume file first.")
     else:
-        with st.spinner("Extracting text and analyzing resume with Gemini Flash..."):
+        with st.spinner("Extracting text and analyzing resume with Gemini Flash (retrying automatically if busy)..."):
             try:
                 resume_text = get_resume_text(uploaded_file)
                 
