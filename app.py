@@ -80,7 +80,7 @@ def evaluate_resume(resume_text, job_description="", api_key=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.2,
